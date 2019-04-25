@@ -4,27 +4,36 @@ import logging
 import operator
 import json
 import re
+import math
 
+from typing import List
 from collections import defaultdict
 
-# XXX: IMPLEMENT THIS
 from nltk.stem.snowball import SnowballStemmer
-stemmer = SnowballStemmer("english")
 
+# Logging
 if "DEBUG" in os.environ:
     logging.basicConfig(level=logging.DEBUG)
+else:
+    logging.basicConfig(level=logging.INFO)
 
+# Constants, change with environ.
 STOPWORDS_FILE = os.environ.get("STOPWORDS_FILE", "stopwords.txt")
 TRANSCRIPT_LOCATION = os.environ.get("TRANSCRIPT_LOCATION", "propeitary/transcripts")
 
+# Regexes
 special_matcher = re.compile(r"(\W)")
 
 class WordTokenizer:
     def __init__(self):
         self.log = logging.getLogger("tokenizer")
+        self.stemmer = SnowballStemmer("english")
+
         self.words = defaultdict(lambda: 0)
+        self.document_words = defaultdict(lambda: defaultdict(lambda: 0))
+        self.documents = set()
         self.stopwords = set()
-    
+
     # Stopword processing
 
     def load_stopwords(self):
@@ -35,23 +44,32 @@ class WordTokenizer:
             sys.exit(1)
 
     def _load_stopwords(self):
+        added = 0
+
         with open(STOPWORDS_FILE) as f:
             for word in f:
                 word = word.lower().strip()
+
                 if not word:
                     continue
+
                 self.stopwords.add(word)
 
-        self.log.info("Loaded %d stopwords.", len(self.stopwords))
+                added += 1
+
+        self.log.info("Loaded %d stopwords.", added)
 
     # File processing
 
     def load_file(self, filename: str):
+        self.documents.add(filename)
+
         with open(filename, "r") as f:
             for line in f.readlines():
                 # Nuke away capitalization and whitespace around the words.
                 line = line.lower().strip()
                 for word in line.split(" "):
+                    self.document_words[filename][word] = 1
                     self.words[word] += 1
 
     def load_files(self):
@@ -68,16 +86,24 @@ class WordTokenizer:
     # Wordlist processing
 
     def stem_word(self, word: str) -> str:
-        # XXX: IMPLEMENT THIS
-        return stemmer.stem(word)
+        return self.stemmer.stem(word)
 
-    def clean_tokens(self):
-        self.log.info("%d word tokens before filtering.", len(self.words))
+    def process_tokens(self, add_stems: bool=True):
+        # Stem out the big word list.
+        self._process_tokens(self.words, add_stems, print_stats=True)
 
-        for word in self.words.copy().keys():
+        # Stem the document frequency.
+        for wordlist in self.document_words.values():
+            self._process_tokens(wordlist, add_stems)
+
+    def _process_tokens(self, wordlist: dict, add_stems: bool=True, print_stats: bool=False):
+        if print_stats:
+            self.log.info("%d word tokens before filtering.", self.token_count)
+
+        for word in wordlist.copy().keys():
             # Drop stopwords.
             if word.lower() in self.stopwords:
-                del self.words[word]
+                del wordlist[word]
                 continue
 
             # Merge special characters with normal words.
@@ -85,30 +111,125 @@ class WordTokenizer:
                 cleaned_word = special_matcher.sub("", word)
 
                 # Update the counts for words that exist and are not stopwords.
-                if cleaned_word and cleaned_word.lower() in self.stopwords:
-                    self.words[cleaned_word] += self.words[word]
+                if (
+                    cleaned_word and  # Ignore blank/null words.
+                    cleaned_word.lower() not in self.stopwords # Ignore stopwords.
+                ):
+                    wordlist[cleaned_word] += wordlist[word]
 
-                del self.words[word]
+                del wordlist[word]
                 continue
 
         # Stem all words
+        if not add_stems:
+            return
+
         stemmed = defaultdict(lambda: 0)
 
-        for word in self.words.copy().keys():
+        for word in wordlist.copy().keys():
             stemmed_word = self.stem_word(word)
-            if (stemmed_word != word) and stemmed_word not in self.stopwords:
-                stemmed[stemmed_word] += self.words[word]
+            if (
+                stemmed_word != word and # Ignore words where the stemmed version is the same as the original.
+                stemmed_word not in self.stopwords # Ignore stopwords.
+            ):
+                stemmed[stemmed_word] += wordlist[word]
 
         for word, value in stemmed.items():
-            self.words[word] += value
+            wordlist[word] += value
 
-        self.log.info("%d word tokens after filtering.", len(self.words))
+        if print_stats:
+            self.log.info("%d word tokens after filtering.", self.token_count)
+
+    # Homework requirements.
+    @property
+    def token_count(self):
+        return sum(self.words.values())
+
+    def count_words(self, count=1):
+        result = 0
+
+        for value in self.words.values():
+            if value == count:
+                result += 1
+
+        return result
+    
+    def print_most_frequent(self, limit=30):
+        printed = 0
+
+        with open("output/words.csv", "w") as f:
+            f.write(",".join(self.term_to_dict(None).keys()))
+            f.write("\n")
+
+            for _ in self.sorted_words:
+                word, count = _
+                self.log.debug("%s [%d times]", word, count)
+
+                # Save to csv file.
+                word_dict = self.term_to_dict(word)
+                f.write(",".join(str(x) for x in word_dict.values()))
+                f.write("\n")
+                
+
+                # Loop bounds
+                printed += 1
+                if printed >= limit:
+                    break
+
+    def print_requirement_stats(self):
+        self.log.info(f"{len(self.words)} unique words in the database.")
+        self.log.info(f"{self.count_words(1)} words that occur only once.")
+        self.log.info(
+            "%.2f words on average between %d documents.",
+            self.token_count / len(self.documents),
+            len(self.documents)
+        )
+        self.print_most_frequent(30)
+    
+    @property
+    def sorted_words(self):
+        return sorted(self.words.items(), key=operator.itemgetter(1), reverse=True)
+
+    def calculate_idf(self, term: str, df: float):
+        if not self.words[term]:
+            return 0.0
+
+        return math.log(len(self.documents) / df)
+
+    def calculate_df(self, term: str):
+        result = 0
+
+        for docterms in self.document_words.values():
+            if term in docterms:
+                result += 1
+        
+        return result
+
+    def term_to_dict(self, term: str):
+        # | Term |  Tf | Tf(weight) | df  | IDF | tf*idf | p(term) |
+        if term:
+            tf = self.words[term]
+            df = self.calculate_df(term)
+            idf = self.calculate_idf(term, df)
+
+            tf_idf = tf * idf
+            tf_weighted = (1 + math.log(tf))
+            probability = tf / self.token_count
+        else:
+            tf, df, idf, tf_idf, tf_weighted, probability = (0, 0, 0, 0, 0, 0)
+
+        return dict(
+            term=term,
+            tf=tf,
+            tf_weighted=tf_weighted,
+            df=df,
+            idf=idf,
+            tf_idf=tf_idf,
+            probability=probability,
+        )
 
     def run(self):
         self.load_stopwords()
         self.load_files()
-        self.clean_tokens()
-        with open("words.csv", "w") as f:
-            f.write("word,count\n")
-            for word in sorted(self.words.items(), key=operator.itemgetter(1), reverse=True):
-                f.write(f"{word[0]},{word[1]}\n")
+        self.process_tokens()
+        self.print_requirement_stats()
