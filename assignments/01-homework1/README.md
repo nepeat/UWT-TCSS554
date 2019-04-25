@@ -19,3 +19,18 @@ Write a program to gather information about word tokens in the sample database. 
 ### Table header
 | Term |  Tf | Tf(weight) | df  | IDF | tf*idf | p(term) |
 |------|:---:|:----------:|:---:|:---:|:------:|:--------|
+
+# Running
+* Python 3.7+
+* Dataset .txt files in propeitary/transcripts
+* stopwords.txt in the current path
+
+```sh
+python . # If in the folder
+python 01-homework1 # If outside the folder
+```
+
+## Environment Variables
+* **DEBUG** - Enables debugging output if set.
+* **STOPWORDS_FILE** - Location of a different stopword file.
+* **TRANSCRIPT_LOCATION** - Location of another folder with .txt files.
