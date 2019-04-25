@@ -3,9 +3,9 @@ A dataset (614 KB on disk) of 404 transcripts is made available on canvas course
 Write a program to gather information about word tokens in the sample database. You may use any programming language. 
 
 ## What to text processing steps you should do?
-1. Remove stopwords (using this filePreview the document only)
+1. Remove stopwords ([using this file](stopwords.txt))
 2. Remove special characters 
-3. Use Porter or Snowball Stemming (see python example (Links to an external site.)Links to an external site.)
+3. Use Porter or Snowball Stemming ([see python example](http://www.nltk.org/howto/stem.html))
 
 ## Use your program to generate the following information:
 * The number of word tokens in the database (**before and after** text processing steps).
