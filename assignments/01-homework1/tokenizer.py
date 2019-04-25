@@ -38,15 +38,21 @@ class WordTokenizer:
 
     def load_stopwords(self):
         try:
-            self._load_stopwords()
+            self._load_stopwords(STOPWORDS_FILE)
         except FileNotFoundError:
-            print(f"Stopwords file {STOPWORDS_FILE} does not exisst.")
-            sys.exit(1)
+            # Try again but in the script location.
+            try:
+                self._load_stopwords(
+                    os.path.join(os.path.dirname(os.path.realpath(__file__)), STOPWORDS_FILE)
+                )
+            except FileNotFoundError:
+                print(f"Stopwords file {STOPWORDS_FILE} does not exisst.")
+                sys.exit(1)
 
-    def _load_stopwords(self):
+    def _load_stopwords(self, filename: str):
         added = 0
 
-        with open(STOPWORDS_FILE) as f:
+        with open(filename) as f:
             for word in f:
                 word = word.lower().strip()
 
@@ -75,13 +81,21 @@ class WordTokenizer:
     def load_files(self):
         loaded = 0
 
-        for root, dirs, files in os.walk(TRANSCRIPT_LOCATION):
+        if os.path.exists(TRANSCRIPT_LOCATION):
+            transcript_path = TRANSCRIPT_LOCATION
+        else:
+            transcript_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), TRANSCRIPT_LOCATION)
+
+        for root, dirs, files in os.walk(transcript_path):
             for filename in files:
                 if filename.endswith(".txt"):
                     self.load_file(os.path.join(root, filename))
                     loaded += 1
-        
-        self.log.info("Loaded %d files.", loaded)
+
+        if loaded == 0:
+            self.log.warning("Loaded 0 files. Are there .txt files in the path '%s'?", transcript_path)
+        else:
+            self.log.info("Loaded %d files.", loaded)
 
     # Wordlist processing
 
@@ -157,6 +171,7 @@ class WordTokenizer:
     def print_most_frequent(self, limit=30):
         printed = 0
 
+        os.makedirs("output", exist_ok=True)
         with open("output/words.csv", "w") as f:
             f.write(",".join(self.term_to_dict(None).keys()))
             f.write("\n")
@@ -181,7 +196,7 @@ class WordTokenizer:
         self.log.info(f"{self.count_words(1)} words that occur only once.")
         self.log.info(
             "%.2f words on average between %d documents.",
-            self.token_count / len(self.documents),
+            (self.token_count / len(self.documents)) if self.documents else 0,
             len(self.documents)
         )
         self.print_most_frequent(30)
