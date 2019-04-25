@@ -1,0 +1,3 @@
+[submodule "assignments/02-project"]
+	path = assignments/02-project
+	url = https://github.com/tcss554-group-project/project
